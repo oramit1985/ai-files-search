@@ -47,7 +47,14 @@ This is the lightweight alternative to tools like Lerna: npm workspaces handles 
 ```bash
 # From the repo root — installs all three workspaces at once
 npm install
+
+# Build the shared package (required before first run and after any change to shared/src/)
+cd shared && npm run build && cd ..
 ```
+
+> **Note:** `npm run build` inside `backend/` runs the shared build automatically via its `prebuild` script.
+> During development, if you edit anything in `shared/src/`, re-run `cd shared && npm run build` so the
+> compiled `dist/` stays in sync and TypeScript picks up the latest types.
 
 ---
 
@@ -189,16 +196,16 @@ TypeScript path aliases (`@agent/*`, `@tools/*`, `@documents/*`) are wired up in
 .
 ├── shared/               # @doc-agent/shared — enums + interfaces
 ├── backend/
+│   ├── documents/        # Knowledge base (5 files)
 │   ├── src/
 │   │   ├── agent/        # ReAct loop, SSE controller, query DTO
 │   │   ├── documents/    # DocumentStore interface + LocalDocumentStore
 │   │   └── tools/        # Registry, executor, 3 handlers
 │   └── test/             # Unit tests (agent + all 3 tools)
-├── frontend/
-│   └── src/
-│       ├── components/   # ChatWindow, MessageBubble, ThinkingSteps, QueryInput
-│       └── api.ts        # SSE streaming client
-└── documents/            # Knowledge base (5 files)
+└── frontend/
+    └── src/
+        ├── components/   # ChatWindow, MessageBubble, ThinkingSteps, QueryInput
+        └── api.ts        # SSE streaming client
 ```
 
 ---

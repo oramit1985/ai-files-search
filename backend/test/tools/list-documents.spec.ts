@@ -1,8 +1,12 @@
 import { listDocuments } from '@tools/handlers/list-documents.handler';
 import { DocumentsService } from '@documents/documents.service';
 
-const mockService = (files: ReturnType<DocumentsService['listFiles']> extends Promise<infer T> ? T : never) =>
-  ({ listFiles: () => Promise.resolve(files) } as unknown as DocumentsService);
+const mockService = (
+  files: ReturnType<DocumentsService['listFiles']> extends Promise<infer T>
+    ? T
+    : never,
+) =>
+  ({ listFiles: () => Promise.resolve(files) }) as unknown as DocumentsService;
 
 describe('listDocuments', () => {
   it('returns file list on success', async () => {
