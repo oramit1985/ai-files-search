@@ -7,6 +7,8 @@ import { AgentStep, ContentBlockType, FinishReason, Message, MessageRole, ModelI
 const MAX_ITERATIONS = 10;
 const MAX_TOKENS = 4096;
 
+// In production this would be fetched from a database or a prompt management service (e.g. LangSmith, Humanloop),
+// decoupled from the codebase so prompts can be versioned, A/B tested, and updated without a code deploy.
 const SYSTEM_PROMPT = `You are a document analysis assistant. You have access to a collection of documents and tools to read and search them.
 
 You may receive prior conversation turns as context. Use them to understand follow-up questions, confirmations, or references to earlier answers — treat them as the same ongoing conversation.
