@@ -146,6 +146,18 @@ This project was built with **[Claude Code](https://claude.ai/code)** (Anthropic
 
 ## Architecture & Design Decisions
 
+### Tool selection strategy
+
+The agent has three tools and a clear decision order:
+
+1. **`list_documents`** — called once at the start of a conversation to discover what files exist. Skipped on follow-up questions that already have context.
+2. **`search_document`** — the default tool for any question that contains a keyword (a date, a name, an error code, etc.). Returns the **full surrounding section** for Markdown files (everything between two `##` headings), or ±10 lines for plain-text files. The agent is instructed to answer directly from these results and not search the same file twice.
+3. **`read_document`** — used only when a full-file read is genuinely necessary: summarising an entire document, comparing two files in full, or asking a broad question with no clear keyword to search for. It is not a fallback after a failed search.
+
+This ordering keeps the typical "find a specific fact" query to two tool calls (list → search → answer) instead of four (list → search → search again → read → answer).
+
+---
+
 ### Hand-rolled ReAct loop (no LangChain / LangGraph)
 
 The agent loop in `backend/src/agent/agent.service.ts` is a plain `for` loop. 

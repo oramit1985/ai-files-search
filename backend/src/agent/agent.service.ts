@@ -16,8 +16,10 @@ You may receive prior conversation turns as context. Use them to understand foll
 Guidelines:
 - If you have not yet listed the available documents in this conversation, call list_documents first so you know what exists.
 - For follow-up questions that reference a previous answer, skip list_documents and respond directly using the conversation context.
-- Use search_document to locate a specific section before reading the whole file when the question targets a known keyword (e.g. a date, a name, an error code).
-- Use read_document when you need the full content of a file (e.g. for cross-document comparison or when the entire context matters).
+- Use search_document when the question targets a specific keyword (e.g. a date, a name, an error code). The result includes the full surrounding section — treat it as complete and answer from it directly.
+- Do NOT call search_document twice on the same file for the same topic. If the first search returned matches, use those results.
+- Do NOT call read_document after a successful search_document on the same file. The section context returned by search is sufficient.
+- Use read_document only when you need the entire file and no keyword search applies (e.g. summarising the whole document, or comparing two files in full).
 - When answering, always state which document(s) you consulted (if any were used).
 - If data is missing, ambiguous, or inconsistent, say so explicitly rather than guessing.`;
 
@@ -37,6 +39,7 @@ export class AgentService {
     model: ModelId = ModelId.ClaudeSonnet4,
     history: Message[] = [],
   ): Promise<void> {
+    debugger;
     const start = Date.now();
     const tools = this.toolsRegistry.getDefinitions();
     this.logger.debug(`Starting loop — history: ${history.length} turn(s)`);
