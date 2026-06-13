@@ -1,0 +1,5 @@
+{
+  "name": "doc-agent",
+  "private": true,
+  "workspaces": ["shared", "backend", "frontend"]
+}

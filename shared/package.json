@@ -1,0 +1,16 @@
+{
+  "name": "@doc-agent/shared",
+  "version": "1.0.0",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "../backend/node_modules/.bin/tsc"
+  }
+}
