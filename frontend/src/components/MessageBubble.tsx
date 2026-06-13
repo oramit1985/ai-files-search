@@ -1,12 +1,13 @@
 import type { ChatMessage } from '../types';
 import { ThinkingSteps } from './ThinkingSteps';
+import {MessageRole} from "@doc-agent/shared";
 
 interface Props {
   message: ChatMessage;
 }
 
 export function MessageBubble({ message }: Props) {
-  const isUser = message.role === 'user';
+  const isUser = message.role === MessageRole.User;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>

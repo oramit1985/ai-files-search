@@ -24,11 +24,11 @@ Guidelines:
 @Injectable()
 export class AgentService {
   private readonly logger = new Logger(AgentService.name);
-  private readonly anthropic = new Anthropic();
 
   constructor(
     private readonly toolsRegistry: ToolsRegistry,
     private readonly toolsExecutor: ToolsExecutor,
+    private readonly anthropic: Anthropic,
   ) {}
 
   async runAgentLoop(
@@ -41,7 +41,10 @@ export class AgentService {
     const tools = this.toolsRegistry.getDefinitions();
     this.logger.debug(`Starting loop — history: ${history.length} turn(s)`);
     const messages: Anthropic.MessageParam[] = [
-      ...history.map((m): Anthropic.MessageParam => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+      ...history.map((m): Anthropic.MessageParam => ({
+        role: m.role as MessageRole.User | MessageRole.Assistant,
+        content: m.content
+      })),
       { role: MessageRole.User, content: query },
     ];
 

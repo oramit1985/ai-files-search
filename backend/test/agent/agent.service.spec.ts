@@ -1,6 +1,5 @@
-// Set before any imports so the Anthropic constructor doesn't throw on missing key.
-process.env.ANTHROPIC_API_KEY = 'test-key';
-
+import { Test } from '@nestjs/testing';
+import Anthropic from '@anthropic-ai/sdk';
 import { AgentService } from '@agent/agent.service';
 import { ToolsRegistry } from '@tools/tools.registry';
 import { ToolsExecutor } from '@tools/tools.executor';
@@ -12,24 +11,14 @@ import {
   ToolName,
 } from '@doc-agent/shared';
 
-const mockRegistry = { getDefinitions: () => [] } as unknown as ToolsRegistry;
+// ── Test constants ────────────────────────────────────────────────────────────
 
-const mockExecutor = {
-  execute: jest
-    .fn()
-    .mockResolvedValue({ success: true, content: 'mock result' }),
-} as unknown as ToolsExecutor;
+const ANSWER_TEXT       = 'The answer is 42.';
+const ANSWER_TEXT_CROSS = 'Based on the documents, the answer is X.';
+const ANSWER_TEXT_READ  = 'Final answer after reading.';
+const MOCK_FILENAME     = 'meetings.md';
 
-function makeAnthropicMock(responses: object[]) {
-  let call = 0;
-  return {
-    messages: {
-      create: jest
-        .fn()
-        .mockImplementation(() => Promise.resolve(responses[call++])),
-    },
-  };
-}
+// ── Response builders ─────────────────────────────────────────────────────────
 
 function endTurnResponse(text: string) {
   return {
@@ -45,61 +34,69 @@ function toolUseResponse(name: string, input: object) {
   };
 }
 
-type AnthropicMock = ReturnType<typeof makeAnthropicMock>;
-
-function setAnthropicMock(svc: AgentService, mock: AnthropicMock): void {
-  (svc as unknown as { anthropic: AnthropicMock }).anthropic = mock;
-}
+// ── Suite ─────────────────────────────────────────────────────────────────────
+// Tests cover the four main branches of the ReAct loop:
+//   1. Immediate answer   — LLM responds directly, no tools needed
+//   2. Single tool call   — LLM calls one tool, then answers
+//   3. Chained tool calls — LLM chains multiple tool calls across iterations
+//   4. Max iterations     — loop guard fires before LLM reaches end_turn
 
 describe('AgentService', () => {
   let service: AgentService;
+  let anthropicCreate: jest.Mock;
+  let executorExecute: jest.Mock;
 
-  beforeEach(() => {
-    (mockExecutor.execute as jest.Mock).mockClear();
-    service = new AgentService(mockRegistry, mockExecutor);
+  beforeEach(async () => {
+    // jest.fn() creates a spy: an empty function that records every call and
+    // can be programmed per-test with .mockResolvedValueOnce() to return
+    // specific LLM responses in sequence — no real API calls are made.
+    anthropicCreate = jest.fn();
+    executorExecute = jest.fn().mockResolvedValue({ success: true, content: 'mock result' });
+
+    const module = await Test.createTestingModule({
+      providers: [
+        AgentService,
+        { provide: ToolsRegistry,  useValue: { getDefinitions: () => [] } },
+        { provide: ToolsExecutor,  useValue: { execute: executorExecute } },
+          /** this is how we're overriding anthropic.messages.create functionality */
+        { provide: Anthropic,      useValue: { messages: { create: anthropicCreate } } },
+      ],
+    }).compile();
+
+    service = module.get(AgentService);
   });
 
-  it('emits answer and done on immediate end_turn', async () => {
-    setAnthropicMock(
-      service,
-      makeAnthropicMock([endTurnResponse('The answer is 42.')]),
-    );
+  it('emits answer + done when LLM responds without calling any tools', async () => {
+    // Programs the spy: the next call to anthropic.messages.create() will resolve
+    // with this fake LLM response. The agent sees stop_reason: 'end_turn' and
+    // emits the answer immediately without calling any tools.
+    anthropicCreate.mockResolvedValueOnce(endTurnResponse(ANSWER_TEXT));
 
     const events: StreamEvent[] = [];
-    await service.runAgentLoop(
-      'test query',
-      (e) => events.push(e),
-      ModelId.ClaudeOpus4,
-    );
+    await service.runAgentLoop('test query', (e) => events.push(e), ModelId.ClaudeOpus4);
 
     expect(events.find((e) => e.type === 'answer')).toMatchObject({
       type: 'answer',
-      data: 'The answer is 42.',
+      data: ANSWER_TEXT,
     });
+    // at(-1) is the last element. We assert it's a 'done' event to verify the
+    // agent always closes the stream — regardless of how it ended.
     expect(events.at(-1)).toEqual({ type: 'done' });
   });
 
-  it('emits a step event before the answer', async () => {
-    setAnthropicMock(
-      service,
-      makeAnthropicMock([
-        toolUseResponse(ToolName.ListDocuments, {}),
-        endTurnResponse('Based on the documents, the answer is X.'),
-      ]),
-    );
+  it('emits a step event for each tool call before the final answer', async () => {
+    // Chaining mockResolvedValueOnce builds a response queue: the 1st call to
+    // anthropic.messages.create() gets the tool-use response, the 2nd call gets
+    // the end-turn response. This mirrors one full agent iteration — tool call
+    // followed by a final answer.
+    anthropicCreate
+      .mockResolvedValueOnce(toolUseResponse(ToolName.ListDocuments, {}))
+      .mockResolvedValueOnce(endTurnResponse(ANSWER_TEXT_CROSS));
 
     const events: StreamEvent[] = [];
-    await service.runAgentLoop(
-      'list docs',
-      (e) => events.push(e),
-      ModelId.ClaudeOpus4,
-    );
+    await service.runAgentLoop('list docs', (e) => events.push(e), ModelId.ClaudeOpus4);
 
-    // eslint-disable-next-line @typescript-eslint/unbound-method
-    expect(mockExecutor.execute).toHaveBeenCalledWith(
-      ToolName.ListDocuments,
-      {},
-    );
+    expect(executorExecute).toHaveBeenCalledWith(ToolName.ListDocuments, {});
     expect(events.find((e) => e.type === 'step')).toMatchObject({
       type: 'step',
       data: { tool: ToolName.ListDocuments, success: true },
@@ -108,49 +105,37 @@ describe('AgentService', () => {
     expect(events.at(-1)).toEqual({ type: 'done' });
   });
 
-  it('emits multiple step events when chaining tool calls', async () => {
-    setAnthropicMock(
-      service,
-      makeAnthropicMock([
-        toolUseResponse(ToolName.ListDocuments, {}),
-        toolUseResponse(ToolName.ReadDocument, { filename: 'meetings.md' }),
-        endTurnResponse('Final answer after reading.'),
-      ]),
-    );
+  it('emits one step event per tool when LLM chains multiple tool calls', async () => {
+    anthropicCreate
+      .mockResolvedValueOnce(toolUseResponse(ToolName.ListDocuments, {}))
+      .mockResolvedValueOnce(toolUseResponse(ToolName.ReadDocument, { filename: MOCK_FILENAME }))
+      .mockResolvedValueOnce(endTurnResponse(ANSWER_TEXT_READ));
 
     const events: StreamEvent[] = [];
-    await service.runAgentLoop(
-      'cross doc query',
-      (e) => events.push(e),
-      ModelId.ClaudeOpus4,
-    );
+    await service.runAgentLoop('cross doc query', (e) => events.push(e), ModelId.ClaudeOpus4);
 
     const steps = events.filter((e) => e.type === 'step');
     expect(steps).toHaveLength(2);
-    expect(steps[1]).toMatchObject({
-      type: 'step',
-      data: { tool: ToolName.ReadDocument },
-    });
+
+    /**
+     *  at(-1) is JavaScript's way of reading the last element of an array (negative index counts from the end). The assertion checks that done is always the final event emitted — no
+     *   matter whether the loop ended with an answer or an error, the stream must be properly closed.
+     * */
+    expect(steps[1]).toMatchObject({ type: 'step', data: { tool: ToolName.ReadDocument } });
   });
 
-  it('emits error and done when max iterations are exceeded', async () => {
-    const responses = Array.from<object>({ length: 11 }).fill(
-      toolUseResponse(ToolName.ListDocuments, {}),
-    );
-    setAnthropicMock(service, makeAnthropicMock(responses));
+  it('emits error + done when the loop hits the max-iteration guard', async () => {
+    // mockResolvedValue (without Once) sets a permanent default — every call
+    // returns the same tool-use response forever. No end_turn is ever queued,
+    // so the loop runs until the max-iteration guard fires.
+    anthropicCreate.mockResolvedValue(toolUseResponse(ToolName.ListDocuments, {}));
 
     const events: StreamEvent[] = [];
-    await service.runAgentLoop(
-      'looping query',
-      (e) => events.push(e),
-      ModelId.ClaudeOpus4,
-    );
+    await service.runAgentLoop('looping query', (e) => events.push(e), ModelId.ClaudeOpus4);
 
     const errorEvent = events.find((e) => e.type === 'error');
     expect(errorEvent).toBeDefined();
-    expect((errorEvent as { type: string; data: string }).data).toContain(
-      'maximum iterations',
-    );
+    expect((errorEvent as { type: string; data: string }).data).toContain('maximum iterations');
     expect(events.at(-1)).toEqual({ type: 'done' });
   });
 });

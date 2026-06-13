@@ -1,4 +1,4 @@
-import type { AgentStep, Message, MessageRole } from '@doc-agent/shared';
+import type { AgentStep, MessageRole } from '@doc-agent/shared';
 
 export type { AgentResponse, DocumentInfo, Message, QueryRequest, StreamEvent } from '@doc-agent/shared';
 
