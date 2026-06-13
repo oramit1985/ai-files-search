@@ -4,16 +4,16 @@ import { MessageRole, ModelId } from '@doc-agent/shared';
 
 class HistoryMessageDto {
   @IsIn([MessageRole.User, MessageRole.Assistant])
-  role: MessageRole.User | MessageRole.Assistant;
+  role!: MessageRole.User | MessageRole.Assistant;
 
   @IsString()
-  content: string;
+  content!: string;
 }
 
 export class QueryDto {
   @IsString()
   @MinLength(1)
-  query: string;
+  query!: string;
 
   @IsOptional()
   @IsEnum(ModelId)

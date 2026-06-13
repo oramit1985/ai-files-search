@@ -22,11 +22,31 @@ An AI-powered document assistant that answers natural-language questions over a 
 
 ---
 
+## Monorepo structure (npm workspaces)
+
+This repo uses [npm workspaces](https://docs.npmjs.com/cli/v10/using-npm/workspaces) — a native npm feature (v7+) that lets multiple packages live in one repo and share a single `node_modules/`.
+
+The root `package.json` declares three workspaces:
+
+```json
+{ "workspaces": ["shared", "backend", "frontend"] }
+```
+
+What this gives you:
+
+- **One `npm install`** at the root installs dependencies for all three packages at once.
+- **Local package symlinking** — `backend` lists `@doc-agent/shared` as a dependency and npm symlinks it directly from the `shared/` folder. No publishing to a registry required; changes to `shared/` are immediately visible to both `backend` and `frontend`.
+- **Hoisted `node_modules`** — shared dependencies (e.g. TypeScript) are deduplicated into the root `node_modules/` rather than installed three times.
+
+This is the lightweight alternative to tools like Lerna: npm workspaces handles dependency management and symlinking, which is all this project needs. Lerna adds versioning, changelog generation, and multi-package publishing on top — useful for open-source libraries, overkill here.
+
+---
+
 ## Installation
 
 ```bash
-# From the repo root
-npm install          # installs all three workspaces at once
+# From the repo root — installs all three workspaces at once
+npm install
 ```
 
 ---
