@@ -3,6 +3,27 @@ import { parse as parseCsv } from 'csv-parse/sync';
 import { DocumentsService } from '@documents/documents.service';
 import { CsvRow, FileExtension, ToolResult } from '@doc-agent/shared';
 
+/**
+ * Tool: read_document
+ *
+ * Reads a file from the knowledge base and returns its content in a
+ * structured, LLM-friendly format based on the file extension:
+ *
+ *   .csv  → parsed into an array of row objects (column name → value).
+ *           Empty cells become null. Currency symbols ($, €, £, ¥) are
+ *           normalised to ISO codes (e.g. "$9.99" → "USD 9.99") so the
+ *           LLM can compare values across mixed-currency data without
+ *           being confused by the raw symbols.
+ *
+ *   .json → parsed into a plain object so the LLM receives structured
+ *           data rather than an escaped JSON string.
+ *
+ *   other → returned as a raw UTF-8 string (.md, .txt, etc.).
+ *
+ * Use this tool when no specific keyword exists to search for, or when
+ * the question requires the full content of a file (e.g. summarising
+ * a document or doing a cross-document comparison).
+ */
 const CURRENCY_SYMBOLS: Record<string, string> = {
   '$': 'USD',
   '€': 'EUR',

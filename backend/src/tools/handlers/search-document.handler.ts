@@ -1,6 +1,24 @@
 import { DocumentsService } from '@documents/documents.service';
 import { SearchMatch, ToolResult } from '@doc-agent/shared';
 
+/**
+ * Tool: search_document
+ *
+ * Searches a file for lines that contain the given query (case-insensitive)
+ * and returns each match with surrounding context lines.
+ *
+ * Use this tool instead of read_document when the question targets a specific
+ * keyword (a date, a name, an error code, etc.) — it avoids loading the full
+ * file and lets the agent jump straight to the relevant section.
+ *
+ * Each result includes:
+ *   - lineNumber: 1-based line number of the match
+ *   - line:       the matched line (trimmed)
+ *   - context:    the CONTEXT_LINES lines above and below the match
+ *
+ * If a match is found, answer from the returned context directly —
+ * do not follow up with read_document on the same file.
+ */
 const CONTEXT_LINES = 2;
 
 export async function searchDocument(
