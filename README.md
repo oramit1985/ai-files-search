@@ -121,19 +121,28 @@ This project was built with **[Claude Code](https://claude.ai/code)** (Anthropic
 
 ### Hand-rolled ReAct loop (no LangChain / LangGraph)
 
-The agent loop in `backend/src/agent/agent.service.ts` is a plain `for` loop. Each iteration calls the Anthropic API, inspects `stop_reason`, executes any tool calls, and appends results to the message array before the next turn. No framework abstractions — the loop is ~60 lines and easy to follow.
+The agent loop in `backend/src/agent/agent.service.ts` is a plain `for` loop. 
+Each iteration calls the Anthropic API, inspects `stop_reason`, executes any tool calls, and appends results to the message 
+array before the next turn. 
+No framework abstractions — the loop is ~60 lines and easy to follow.
 
 ### SSE streaming over a single POST
 
-Rather than polling or WebSockets, the frontend opens a streaming `POST /agent/query`. The server pushes typed SSE frames (`step`, `answer`, `error`, `done`) as the agent thinks, so the UI can show tool calls in real time before the final answer arrives.
+Rather than polling or WebSockets, the frontend opens a streaming `POST /agent/query`. 
+The server pushes typed SSE frames (`step`, `answer`, `error`, `done`) as the agent thinks, 
+so the UI can show tool calls in real time before the final answer arrives.
 
 ### Multi-turn conversation history
 
-The frontend maintains `ChatMessage[]` state and sends completed turns as `history` on each new request. The backend prepends them to the Anthropic `messages` array, giving Claude full context for follow-up questions like "are you sure?" or "tell me more about that."
+The frontend maintains `ChatMessage[]` state and sends completed turns as `history` on each new request. 
+The backend prepends them to the Anthropic `messages` array, giving Claude full context for follow-up questions
+like "are you sure?" or "tell me more about that."
 
 ### Document store abstraction (Strategy pattern)
 
-`DocumentStore` is an interface with a `DOCUMENT_STORE` injection token. `LocalDocumentStore` is today's implementation (plain `fs` calls). Swapping to S3, GCS, or a database means writing one new class and changing one line in `DocumentsModule`:
+`DocumentStore` is an interface with a `DOCUMENT_STORE` injection token. 
+`LocalDocumentStore` is today's implementation (plain `fs` calls). 
+Swapping to S3, GCS, or a database means writing one new class and changing one line in `DocumentsModule`:
 
 ```typescript
 { provide: DOCUMENT_STORE, useClass: S3DocumentStore }
