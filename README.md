@@ -1,81 +1,185 @@
 # Document Agent
 
-A document Q&A agent built with NestJS and React. Ask natural-language questions about a collection of documents and the agent reasons over them using tool calls.
+An AI-powered document assistant that answers natural-language questions over a local knowledge base. The agent reads, searches, and reasons across multiple files in a ReAct-style tool-calling loop, streaming its progress to the UI in real time.
 
 ---
 
-## How to Install & Run
+## Stack
 
-### Prerequisites
+| Layer | Technology |
+|---|---|
+| Backend | NestJS 11, TypeScript 5 |
+| Frontend | React 19, Vite 8, Tailwind CSS 4 |
+| LLM | Anthropic Claude (`claude-sonnet-4-6` default, `claude-opus-4-8` available) |
+| Shared types | `@doc-agent/shared` — npm workspace package consumed by both sides |
+
+---
+
+## Prerequisites
+
 - Node.js 20+
-- An OpenAI API key
+- An [Anthropic API key](https://console.anthropic.com/settings/keys)
 
-### Backend
+---
+
+## Installation
 
 ```bash
-cd backend
-npm install
-export OPENAI_API_KEY=your-key-here
-npm run start:dev
+# From the repo root
+npm install          # installs all three workspaces at once
 ```
 
-The API starts on **http://localhost:3000**.
+---
 
-### Frontend
+## Configuration
+
+Create `backend/.env`:
+
+```env
+ANTHROPIC_API_KEY=sk-ant-...
+PORT=3000
+CORS_ORIGIN=http://localhost:5174
+```
+
+---
+
+## Running
+
+Open two terminals:
 
 ```bash
+# Terminal 1 — backend (hot-reload)
+cd backend
+npm run start:dev
+
+# Terminal 2 — frontend (hot-reload)
 cd frontend
-npm install
 npm run dev
 ```
 
-The UI opens at **http://localhost:5173**.
+Then open **http://localhost:5174**.
 
-### Run Tests
+---
+
+## API
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/agent/query` | Runs the agent loop; streams SSE events (`step`, `answer`, `error`, `done`) |
+| `GET` | `/documents` | Lists available documents with name, size, and extension |
+
+### Request body (`POST /agent/query`)
+
+```json
+{
+  "query": "What was decided in the March 12 meeting?",
+  "model": "claude-sonnet-4-6",
+  "history": [
+    { "role": "user",      "content": "previous question" },
+    { "role": "assistant", "content": "previous answer"   }
+  ]
+}
+```
+
+`model` and `history` are optional. `history` enables multi-turn conversation.
+
+---
+
+## Testing
 
 ```bash
 cd backend
-npm test
+npm test           # unit tests (19 specs)
+npm run test:cov   # with coverage report
+```
+
+All three tool handlers have 100 % statement/branch/function coverage. The agent service is tested with mocked Anthropic responses covering the full loop, including max-iteration exhaustion.
+
+---
+
+## LLM
+
+**Anthropic Claude** via the official `@anthropic-ai/sdk`.
+
+- Default model: `claude-sonnet-4-6`
+- Available: `claude-opus-4-8`, `claude-haiku-4-5`
+- The model can be selected per request via the `model` field in the request body.
+
+---
+
+## AI Coding Tools
+
+This project was built with **[Claude Code](https://claude.ai/code)** (Anthropic's CLI coding assistant), which assisted with:
+
+- Scaffolding the NestJS + React monorepo structure
+- Implementing the ReAct agent loop and SSE streaming layer
+- TypeScript type design across the shared package
+
+---
+
+## Architecture & Design Decisions
+
+### Hand-rolled ReAct loop (no LangChain / LangGraph)
+
+The agent loop in `backend/src/agent/agent.service.ts` is a plain `for` loop. Each iteration calls the Anthropic API, inspects `stop_reason`, executes any tool calls, and appends results to the message array before the next turn. No framework abstractions — the loop is ~60 lines and easy to follow.
+
+### SSE streaming over a single POST
+
+Rather than polling or WebSockets, the frontend opens a streaming `POST /agent/query`. The server pushes typed SSE frames (`step`, `answer`, `error`, `done`) as the agent thinks, so the UI can show tool calls in real time before the final answer arrives.
+
+### Multi-turn conversation history
+
+The frontend maintains `ChatMessage[]` state and sends completed turns as `history` on each new request. The backend prepends them to the Anthropic `messages` array, giving Claude full context for follow-up questions like "are you sure?" or "tell me more about that."
+
+### Document store abstraction (Strategy pattern)
+
+`DocumentStore` is an interface with a `DOCUMENT_STORE` injection token. `LocalDocumentStore` is today's implementation (plain `fs` calls). Swapping to S3, GCS, or a database means writing one new class and changing one line in `DocumentsModule`:
+
+```typescript
+{ provide: DOCUMENT_STORE, useClass: S3DocumentStore }
+```
+
+All tool handlers, the executor, and the agent are completely unaware of the storage backend.
+
+### Type-safe shared package
+
+`@doc-agent/shared` is an npm workspace package that exports all enums (`ModelId`, `FinishReason`, `ContentBlockType`, `ToolName`, …) and interfaces (`AgentStep`, `StreamEvent`, `QueryRequest`, …). Both the NestJS backend and the React frontend consume it directly — no duplicated type definitions, and any breaking change fails compilation on both sides simultaneously.
+
+### Path aliases
+
+TypeScript path aliases (`@agent/*`, `@tools/*`, `@documents/*`) are wired up in three places so they resolve consistently everywhere:
+- `tsconfig.json` — for `tsc` type checking
+- `jest moduleNameMapper` — for unit tests
+- `webpack.config.js` `resolve.alias` — for the NestJS production bundle
+
+---
+
+## Project Structure
+
+```
+.
+├── shared/               # @doc-agent/shared — enums + interfaces
+├── backend/
+│   ├── src/
+│   │   ├── agent/        # ReAct loop, SSE controller, query DTO
+│   │   ├── documents/    # DocumentStore interface + LocalDocumentStore
+│   │   └── tools/        # Registry, executor, 3 handlers
+│   └── test/             # Unit tests (agent + all 3 tools)
+├── frontend/
+│   └── src/
+│       ├── components/   # ChatWindow, MessageBubble, ThinkingSteps, QueryInput
+│       └── api.ts        # SSE streaming client
+└── documents/            # Knowledge base (5 files)
 ```
 
 ---
 
-## LLM API Used
+## Documents
 
-**OpenAI GPT-4o** via the official `openai` npm package.
-
----
-
-## AI Coding Tools Used
-
-- **Claude Code (claude-sonnet-4-6)** — used throughout: system design, planning, implementation of all backend and frontend code, debugging TypeScript errors, and writing tests.
-
----
-
-## Design Decisions
-
-### Agent loop — hand-rolled, no framework
-
-The loop in `backend/src/agent/agent.service.ts` is a plain `for` loop (max 10 iterations). Each iteration sends the current message history to GPT-4o with tool definitions. If the response has `finish_reason: tool_calls`, the tools are executed and their results are appended as `role: tool` messages. If `finish_reason: stop`, the loop returns the final answer. This is the ReAct pattern implemented from scratch — no LangChain, LangGraph, or similar.
-
-### 3 tools, not 6
-
-Initial design had separate `parse_csv`, `parse_json`, and `parse_log` tools. These were folded into a smarter `read_document`:
-
-- `.csv` → parsed JSON rows with currency symbols stripped and empty cells as `null`
-- `.json` → parsed JavaScript object
-- `.txt` / `.md` → raw string
-
-This reduces the decision surface for the agent (fewer tools to choose from) while keeping the same capabilities. `search_document` stays separate because line-level keyword search with context is genuinely different from reading the whole file.
-
-### No RAG / vector search
-
-All 5 documents are under 10 KB total — well within GPT-4o's 128 K context window. Chunking and embedding would add API cost and complexity for zero improvement on this corpus. The LLM is the semantic reasoning layer; `search_document` is only used to jump to a relevant section without sending the full file.
-
-### Shared types
-
-`backend/src/types/` is the single source of truth for enums (`MessageRole`, `ModelId`, `ToolName`, `FinishReason`, `FileExtension`, `LogLevel`) and interfaces (`AgentResponse`, `AgentStep`, `ToolResult`, etc.). The frontend's `types.ts` re-exports only the API contract shapes to avoid coupling the React app to backend-internal types.
-
-### Path traversal protection
-
-`DocumentsService.resolveSafePath` resolves the requested filename against the documents directory and rejects any path that escapes it before the file is opened.
+| File | Format | Contents |
+|---|---|---|
+| `meetings.md` | Markdown | Meeting notes from 3 project team sessions |
+| `sales-q1.csv` | CSV | Q1 sales data (contains deliberate inconsistencies) |
+| `emails.txt` | Plain text | Email thread about revenue discrepancies |
+| `config.json` | JSON | Production application configuration |
+| `server-log.txt` | Plain text | Server log with timestamps, errors, and warnings |
